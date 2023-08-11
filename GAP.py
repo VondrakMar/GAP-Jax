@@ -1,11 +1,11 @@
-import jax.numpy as np
-from jax import grad
+import numpy as np
+# from jax import grad
 from ase.io import *
 from ase.data import covalent_radii
 from ase.units import Bohr, Hartree
 import random
-from dscribe.descriptors import SOAP
-
+from descriptors import *
+# from scipy import sparse
 
 atom_energy = {"Zn": -49117.02929728, "O": -2041.3604,
                "H": -13.63393, "Li": -7.467060138769*Hartree,
@@ -18,11 +18,41 @@ def train(L,E_ref,K, lambda_reg =0.1, atom_energy = None, energy_keyword = "ener
     weights = np.linalg.solve(down,up)
     return weights
 
-def calculate(train,mol,weights,pars):
+def calculateE(train,mol,weights,pars):
     K = kernel_matrix(pars = pars,mol_set1 = [mol],mol_set2=train)
     energy = np.matmul(K,weights)
     nAt  = len(mol)
     results = np.sum(energy)*Hartree
+    return results
+
+
+
+
+def calculateEF(train,mol,weights,pars,zeta = 2):
+    # K = kernel_matrix(pars = pars,mol_set1 = [mol],mol_set2=train)
+    desc1,der1 = DerDescriptor(mol,pars)
+    desc2 = descriptor_atoms(train,pars)
+    print("Derivatives are done")
+    # print(der1.shape)
+    K = kernel_matrix(pars = pars,mol_set1 = [mol],mol_set2=train)
+    # dKdr = an_kernel_gradient(mol,train,pars,zeta=zeta)#kernel_der(desc1,der1,desc2,mol, zeta=2)
+    dKdr = kernel_der(desc1,der1,desc2,mol, zeta=2)
+    # print(dKdr.shape)
+    print("Kernel derivatives are done")
+    energy = np.matmul(K,weights)
+    nAt  = len(mol)
+    # dKdr = kernel_der
+    f_k  = np.zeros((nAt,3))
+    for j in range(nAt):
+        for direction in range(3):
+            # print(dKdr[j][direction].shape)
+            eneg_drj = np.matmul(dKdr[j][direction],weights)
+            # print("eneg_drj",eneg_drj.shape)
+            # print("diggy",eneg_drj[0])
+            # print("hole",np.matmul(dKdr[j][direction][0],self.weights))
+            for i in range(nAt):
+                f_k[j,direction] += -eneg_drj[i]
+    results = {'energy':np.sum(energy)*Hartree,'forces':f_k*Hartree}
     return results
 
 def prepLgap(dim1,dim2,mols):#,charges):
@@ -31,7 +61,7 @@ def prepLgap(dim1,dim2,mols):#,charges):
     count_r, count_c = 0, 0
     for mol in mols:
         for at in mol:
-            Lgap = Lgap.at[count_r,count_c].set(1)
+            Lgap[count_r,count_c] = 1
             count_r += 1
         count_c += 1
     return Lgap
@@ -47,24 +77,7 @@ def get_energies(mols, atom_energy, energy_keyword = "energy"):
         energy.append(mol_energy/Hartree)
     return np.array(energy)
 
-def descriptor_atoms(molecules,pars):
-    soap = SOAP(
-        periodic=pars["periodic"],
-        r_cut=pars["rcut"],  
-        n_max=pars["nmax"],
-        sigma=pars["sigma"],
-        species = pars["species"],
-        l_max=pars["lmax"])
-    soap_atoms = []
-    element_list = []
-    soaps_new = soap.create(molecules)
-    if len(molecules) == 1:
-        soaps_new = [soaps_new]
-    for ids,m in enumerate(soaps_new):
-        element_list.extend([a.symbol for a in molecules[ids]])
-        norms = np.linalg.norm(m,axis=-1)
-        soap_atoms.extend(m/norms[:,None])
-    return np.array(soap_atoms)#, np.array(element_list)
+
 
 def kernel_matrix(pars = None, mol_set1=None,mol_set2=None,zeta=2):
     desc1 = descriptor_atoms(mol_set1,pars)
@@ -94,3 +107,18 @@ def get_energies_perAtom(mols, atom_energy, energy_keyword = "energy"):
         mol_energy = mol_energy#/Hartree
         energy.append(mol_energy/len(mol))
     return energy
+
+
+def kernel_der(desc1,der1,train_desc,mol_set1, zeta=2):
+    t1 = (np.matmul(desc1,np.transpose(train_desc))**(zeta-1))
+    dKdr = []
+    for iatom in range(len(mol_set1)):
+        dKdri = []
+        for direction in range(3):
+            curDer = (der1[iatom][direction])
+            t2 = np.matmul(curDer,np.transpose(train_desc))
+            K = (zeta*np.multiply(t1,t2))
+            dKdri.append(K)
+        dKdr.append(dKdri)
+#        print(dKdr_final)
+    return np.array(dKdr)
