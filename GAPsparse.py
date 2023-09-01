@@ -28,15 +28,16 @@ def calculateEFSparse(train,mol,weights,pars,zeta = 2):
     # K = kernel_matrix(pars = pars,mol_set1 = [mol],mol_set2=train)
     der1, desc1 = DerDescriptorSparse(mol,pars)
     desc2 = descriptor_atoms(train,pars)
-    print("Derivatives are done")
+    # print("Derivatives are done")
     K = np.matmul(desc1,np.transpose(desc2))**zeta
     dKdr = kernel_derSparse(desc1,der1,desc2,mol, zeta=2)
-    print("Kernel derivatives are done")
+    # print("Kernel derivatives are done")
     energy = np.matmul(K,weights)
     nAt  = len(mol)
     f_k  = np.zeros((nAt,3))
     for j in range(nAt):
         for direction in range(3):
+            # print(dKdr[j][direction])
             eneg_drj = np.matmul(dKdr[j][direction],weights)
             for i in range(nAt):
                 f_k[j,direction] += -eneg_drj[i]

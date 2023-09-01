@@ -50,7 +50,7 @@ def DerDescriptorSparse(molecule,pars):
     norms2 = sparse.COO.from_numpy(norms2)
     invnorms = sparse.COO.from_numpy(invnorms)
     invnorms2 = sparse.COO.from_numpy(invnorms2)
-    print("I am fucking here")
+    # print("I am fucking here")
     hold = sparse.einsum('ij,arkj->arik',desc,deriv_final)
     vd = sparse.einsum('akii->aki',hold)
     r1 = sparse.einsum('akl,lj,l->aklj',vd,desc,invnorms)
